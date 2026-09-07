@@ -22,6 +22,8 @@ python3 $C init --root ./my-research
 
 ```text
 my-research/
+├── CLAUDE.md           # 이 폴더의 규칙
+├── compass.json        # 워크스페이스 설정
 ├── profile.md          # 목표·자원·영역·교훈
 ├── roadmap.md          # 프로젝트 표와 역량 지도
 ├── journal/            # 날짜별 연구 일지
