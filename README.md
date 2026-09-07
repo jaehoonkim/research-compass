@@ -7,11 +7,11 @@
 ## 설치
 
 ```bash
-claude plugin marketplace add /path/to/research-compass   # 또는 git URL
+claude plugin marketplace add jaehoonkim/research-compass
 claude plugin install research-compass@research-compass
 ```
 
-설치 후 새 세션에서 `/research-compass`가 보인다.
+설치 후 새 세션에서 `/research-compass`가 보인다. 로컬 클론에서 개발 중이라면 GitHub 경로 대신 `claude plugin marketplace add ./`를 쓴다.
 
 ## 워크스페이스 만들기
 
@@ -52,7 +52,7 @@ python3 skills/research-compass/scripts/compass.py check --root .
 
 ## 스킬 수정 후 반영
 
-플러그인 캐시는 버전이 같으면 갱신되지 않는다. `.claude-plugin/plugin.json`과 `.claude-plugin/marketplace.json`의 `version`을 올린 뒤 실행한다.
+플러그인 캐시는 버전이 같으면 갱신되지 않는다. `.claude-plugin/plugin.json`과 `.claude-plugin/marketplace.json`의 `version`을 올려 commit·push한 뒤 실행한다.
 
 ```bash
 claude plugin marketplace update research-compass
