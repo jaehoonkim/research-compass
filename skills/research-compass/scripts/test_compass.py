@@ -121,6 +121,43 @@ class CompassTests(unittest.TestCase):
         meta.write_text(json.dumps(record))
         self.assertTrue(any('plain filename' in e for e in self.call('check', expected=1)['errors']))
 
+    def test_library_dedup_ignores_organization(self):
+        a = self.add('same paper', 'library', '--organization', 'arXiv')
+        b = self.add('same paper', 'library', '--organization', 'NeurIPS')
+        self.assertEqual(a['id'], b['id'])
+        self.assertEqual(b['status'], 'duplicate')
+
+    def test_two_independent_signals_count_as_two_demand_groups(self):
+        self.add('signal one')
+        self.add('signal two')
+        self.assertEqual(self.call('check')['counts']['demand_groups'], 2)
+
+    def test_corrupt_meta_json_is_reported_without_aborting_check(self):
+        item = self.add()
+        meta_path = self.root / 'signals' / item['id'] / 'meta.json'
+        record = json.loads(meta_path.read_text())
+        del record['title']
+        meta_path.write_text(json.dumps(record))
+        result = self.call('check', expected=1)
+        self.assertEqual(result['status'], 'failed')
+        self.assertTrue(any(item['id'] in e and 'missing fields' in e for e in result['errors']), result['errors'])
+        self.assertIn('counts', result)
+        self.assertIn('projects', result)
+
+    # check (whole-workspace scan)
+
+    def test_check_reports_unreadable_file_by_name_instead_of_aborting(self):
+        project = self.project()
+        folder = self.root / 'projects' / f"{project['id']}-rvv-quant"
+        (folder / 'broken.md').write_bytes('제목: 잘못된 인코딩'.encode('cp949'))
+        result = self.call('check', expected=1)
+        self.assertEqual(result['status'], 'failed')
+        self.assertTrue(any('unreadable' in e and 'broken.md' in e for e in result['errors']), result['errors'])
+
+    def test_check_ignores_ids_found_in_inbox(self):
+        (self.root / 'inbox/dropped.md').write_text('See EXP-042', encoding='utf-8')
+        self.assertEqual(self.call('check')['status'], 'ok')
+
     # projects
     def project(self, slug='rvv-quant'):
         return self.call('new-project', '--slug', slug, '--title', 'Test project')
@@ -173,6 +210,36 @@ class CompassTests(unittest.TestCase):
         self.experiment(folder, 'reproduction')
         self.assertEqual(self.call('check')['status'], 'ok')
 
+    def test_gate_blocks_reproduction_before_reading(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='direction')
+        self.experiment(folder, 'reproduction')
+        errors = self.call('check', expected=1)['errors']
+        self.assertTrue(any('gate' in e for e in errors), errors)
+
+    def test_gate_blocks_pilot_before_question(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading')
+        self.experiment(folder, 'pilot')
+        errors = self.call('check', expected=1)['errors']
+        self.assertTrue(any('gate' in e for e in errors), errors)
+
+    def test_chained_skip_lines_compose_to_cover_the_gate(self):
+        self.project()
+        card = self.root / 'projects/P-001-rvv-quant/project.md'
+        self.set_header(card, stage='reading')
+        lines = card.read_text(encoding='utf-8').splitlines()
+        end = lines.index('')
+        lines = lines[:end] + ['skip: reading->question 2026-09-10 사용자 요청',
+                                'skip: question->plan 2026-09-11 사용자 요청'] + lines[end:]
+        card.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        self.experiment(self.root / 'projects/P-001-rvv-quant', 'main')
+        result = self.call('check')
+        self.assertEqual(result['status'], 'ok')
+        self.assertTrue(any('(skipped)' in w for w in result['warnings']), result['warnings'])
+
     def test_skip_downgrades_gate_to_warning(self):
         self.project()
         folder = self.root / 'projects/P-001-rvv-quant'
@@ -212,6 +279,43 @@ class CompassTests(unittest.TestCase):
         self.assertTrue(any('verdict' in u for u in self.call('check')['projects'][0]['unmet']))
         self.experiment(folder, 'pilot', status='completed', verdict='alive')
         self.assertEqual(self.call('check')['projects'][0]['unmet'], [])
+
+    def test_approval_must_name_the_current_stage(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='plan', approval='question 승인 2026-09-10')
+        unmet = self.call('check')['projects'][0]['unmet']
+        self.assertTrue(any('approval' in u for u in unmet), unmet)
+        self.set_header(folder / 'project.md', stage='question')
+        self.assertEqual(self.call('check')['projects'][0]['unmet'], [])
+
+    def test_dropped_project_reports_no_unmet(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading', status='dropped')
+        self.assertEqual(self.call('check')['projects'][0]['unmet'], [])
+
+    def test_completed_experiment_with_empty_observation_warns(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='active')
+        (folder / 'experiments/EXP-001.md').write_text(
+            'id: EXP-001\nkind: main\nstatus: completed\nverdict:\n\n# EXP-001\n\n'
+            '## 실제 관찰\n미측정. 실행 로그가 있기 전까지 채우지 않는다.\n원시 결과 경로:\n\n'
+            '## 해석과 타당성\n', encoding='utf-8')
+        result = self.call('check')
+        self.assertTrue(any('실제 관찰' in w for w in result['warnings']), result['warnings'])
+
+    def test_completed_experiment_with_filled_observation_does_not_warn(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='active')
+        (folder / 'experiments/EXP-001.md').write_text(
+            'id: EXP-001\nkind: main\nstatus: completed\nverdict:\n\n# EXP-001\n\n'
+            '## 실제 관찰\n정확도 92%. 로그 확인함.\n원시 결과 경로: logs/1\n\n'
+            '## 해석과 타당성\n', encoding='utf-8')
+        result = self.call('check')
+        self.assertFalse(any('실제 관찰' in w for w in result['warnings']), result['warnings'])
 
     def test_unknown_id_reference_in_project_fails(self):
         self.project()
