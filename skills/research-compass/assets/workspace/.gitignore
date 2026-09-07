@@ -3,15 +3,9 @@ __pycache__/
 *.pyc
 .env
 .env.*
-!.env.example
 .venv/
-.compass-write.lock
-snapshots/
+inbox/*
+!inbox/.gitkeep
 artifacts/
 models/
 datasets/
-inbox/*
-!inbox/.gitkeep
-sources/**/original.*
-sources/**/extracted.*
-sources/.pending-*/
