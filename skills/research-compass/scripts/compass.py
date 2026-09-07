@@ -101,18 +101,26 @@ def header(path: Path) -> dict:
     return found
 
 
-def store_records(root: Path, store: str) -> list[dict]:
+def store_records(root: Path, store: str, errors: list | None = None) -> list[dict]:
+    """Read meta.json for every record in `store`. With `errors` given, a bad record is
+    reported there (`f'{folder.name}: ...'`) and skipped; with errors=None it raises."""
     prefix = STORES[store][0]
     result = []
     for folder in sorted(safe(root, store).glob(prefix + '-*')):
         if not folder.is_dir():
             continue
-        meta = read_json(folder / 'meta.json')
-        missing = META_KEYS - set(meta)
-        if missing:
-            raise ValueError(folder.name + ' missing fields: ' + ', '.join(sorted(missing)))
-        if meta['id'] != folder.name or not re.fullmatch(prefix + r'-\d{8}-\d{3,}', meta['id']):
-            raise ValueError('ID / directory mismatch: ' + folder.name)
+        try:
+            meta = read_json(folder / 'meta.json')
+            missing = META_KEYS - set(meta)
+            if missing:
+                raise ValueError(folder.name + ' missing fields: ' + ', '.join(sorted(missing)))
+            if meta['id'] != folder.name or not re.fullmatch(prefix + r'-\d{8}-\d{3,}', meta['id']):
+                raise ValueError('ID / directory mismatch: ' + folder.name)
+        except (ValueError, OSError) as exc:
+            if errors is None:
+                raise
+            errors.append(folder.name + ': ' + str(exc))
+            continue
         result.append(meta)
     return result
 
@@ -156,7 +164,8 @@ def ingest(root: Path, a: argparse.Namespace) -> dict:
         raise ValueError('Related record does not exist in ' + store + ': ' + a.related_to)
     original_hash = digest(origin)
     for item in rows:
-        same_org = (item['organization'] or '').strip().casefold() == (a.organization or '').strip().casefold()
+        same_org = store != 'signals' or (
+            (item['organization'] or '').strip().casefold() == (a.organization or '').strip().casefold())
         if item['sha256'] == original_hash and same_org:
             return {'status': 'duplicate', 'id': item['id'],
                     'note': 'Original retained; nothing changed. Record any new provenance separately.'}
@@ -193,7 +202,7 @@ def ingest(root: Path, a: argparse.Namespace) -> dict:
 
 def check_store(root: Path, store: str, errors: list, warnings: list) -> list[dict]:
     prefix, analysis_name, _ = STORES[store]
-    rows = store_records(root, store)
+    rows = store_records(root, store, errors)
     by_id = {r['id']: r for r in rows}
     for item in rows:
         sid = item['id']
@@ -266,6 +275,29 @@ def stage_index(name: str) -> int:
     return STAGES.index(name) if name in STAGES else -1
 
 
+def merge_ranges(pairs: list) -> list:
+    """Sort (a, b) index pairs by start and coalesce overlapping/adjacent ones."""
+    merged = []
+    for a, b in sorted(pairs):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def observation_empty(text: str) -> bool:
+    """True if the `## 실제 관찰` section of an experiment card is missing, blank, or still
+    the template sentinel (`미측정.`)."""
+    lines = text.splitlines()
+    start = next((i + 1 for i, line in enumerate(lines) if line.strip() == '## 실제 관찰'), None)
+    if start is None:
+        return True
+    end = next((i for i in range(start, len(lines)) if lines[i].startswith('## ')), len(lines))
+    body = '\n'.join(lines[start:end]).strip()
+    return not body or '미측정.' in body
+
+
 def check_projects(root: Path, errors: list, warnings: list, min_library: int) -> tuple[list[dict], set]:
     projects, ids = [], set()
     for folder in sorted(safe(root, 'projects').glob('P-*')):
@@ -283,7 +315,9 @@ def check_projects(root: Path, errors: list, warnings: list, min_library: int) -
         if h.get('id') != pid:
             errors.append(pid + ': header id does not match folder')
         stage = h.get('stage', '')
-        if stage not in STAGES:
+        if not stage:
+            errors.append(f'{pid}: invalid stage {stage!r} (머리글은 첫 빈 줄 전까지만 읽는다)')
+        elif stage not in STAGES:
             errors.append(pid + ': invalid stage ' + repr(stage))
         if h.get('status', 'active') not in PROJECT_STATUS:
             errors.append(pid + ': invalid status ' + repr(h.get('status')))
@@ -310,26 +344,29 @@ def check_projects(root: Path, errors: list, warnings: list, min_library: int) -
                 have = stage_index(stage)
                 if have < need:
                     msg = f'{exp.stem}: gate violation, kind {kind} needs stage {GATE[kind]} but {pid} is at {stage}'
-                    if any(a <= have and b >= need for a, b in skips):
+                    if any(a <= have and b >= need for a, b in merge_ranges(skips)):
                         warnings.append(msg + ' (skipped)')
                     else:
                         errors.append(msg)
+            if status == 'completed' and observation_empty(exp.read_text(encoding='utf-8')):
+                warnings.append(f'{exp.stem}: completed but 실제 관찰 section is empty')
             exps.append({'kind': kind, 'status': status, 'verdict': eh.get('verdict', '')})
         unmet = []
-        if stage == 'reading':
-            reading = folder / 'reading.md'
-            libs = set(re.findall(r'\bLIB-\d{8}-\d{3,}\b', reading.read_text(encoding='utf-8'))) if reading.is_file() else set()
-            if len(libs) < min_library:
-                unmet.append(f'reading.md links {len(libs)} library records; minimum {min_library}')
-        elif stage == 'reproduction':
-            if not any(e['kind'] == 'reproduction' and e['status'] in ('completed', 'blocked') for e in exps):
-                unmet.append('no reproduction experiment with status completed or blocked')
-        elif stage == 'pilot':
-            if not any(e['kind'] == 'pilot' and e['status'] == 'completed' and e['verdict'] in ('alive', 'dead') for e in exps):
-                unmet.append('no completed pilot experiment with verdict alive or dead')
-        elif stage in ('question', 'plan'):
-            if h.get('approval', '미확인') in ('', '미확인', 'pending', 'no'):
-                unmet.append(f'approval line is not set for stage {stage}')
+        if h.get('status', 'active') == 'active':
+            if stage == 'reading':
+                reading = folder / 'reading.md'
+                libs = set(re.findall(r'\bLIB-\d{8}-\d{3,}\b', reading.read_text(encoding='utf-8'))) if reading.is_file() else set()
+                if len(libs) < min_library:
+                    unmet.append(f'reading.md links {len(libs)} library records; minimum {min_library}')
+            elif stage == 'reproduction':
+                if not any(e['kind'] == 'reproduction' and e['status'] in ('completed', 'blocked') for e in exps):
+                    unmet.append('no reproduction experiment with status completed or blocked')
+            elif stage == 'pilot':
+                if not any(e['kind'] == 'pilot' and e['status'] == 'completed' and e['verdict'] in ('alive', 'dead') for e in exps):
+                    unmet.append('no completed pilot experiment with verdict alive or dead')
+            elif stage in ('question', 'plan'):
+                if not re.search(r'\b' + stage + r'\b', h.get('approval', '미확인')):
+                    unmet.append(f'approval line is not set for stage {stage}')
         projects.append({'id': pid, 'slug': slug, 'title': h.get('title', ''), 'stage': stage,
                          'status': h.get('status', 'active'), 'unmet': unmet})
     return projects, ids
@@ -347,11 +384,17 @@ def check(root: Path) -> dict:
     groups = {r.get('demand_group') for r in signals} - {None}
     available = {r['id'] for r in signals + library} | project_ids
     for path in root.rglob('*.md'):
-        if path.name.startswith('original.') or '.git' in path.parts:
+        rel = path.relative_to(root)
+        if path.name.startswith('original.') or rel.parts[0] in ('inbox', 'artifacts', 'models', 'datasets', '.git'):
             continue
-        for ref in set(ID_RE.findall(path.read_text(encoding='utf-8'))):
+        try:
+            text = path.read_text(encoding='utf-8')
+        except (UnicodeDecodeError, OSError) as exc:
+            errors.append(f'{rel}: unreadable ({exc})')
+            continue
+        for ref in set(ID_RE.findall(text)):
             if ref not in available:
-                errors.append(str(path.relative_to(root)) + ': unresolved ID ' + ref)
+                errors.append(str(rel) + ': unresolved ID ' + ref)
     return {'status': 'ok' if not errors else 'failed', 'errors': errors, 'warnings': warnings,
             'counts': {'signals': len(signals), 'library': len(library), 'demand_groups': len(groups)},
             'projects': projects,
