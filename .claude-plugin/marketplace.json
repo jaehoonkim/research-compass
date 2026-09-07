@@ -7,11 +7,11 @@
     {
       "name": "research-compass",
       "source": "./",
-      "description": "Turn job postings and RFPs into a durable, evidence-linked local research roadmap.",
-      "version": "0.3.0"
+      "description": "Stage-by-stage research coach for beginners: from job postings, RFPs, and papers to a planned, executed, and written-up research project.",
+      "version": "1.0.0"
     }
   ],
   "metadata": {
-    "description": "Research Compass plugin: job postings / RFPs -> local research roadmap"
+    "description": "Research Compass plugin: stage-based research coach"
   }
 }
