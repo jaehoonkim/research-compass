@@ -2,7 +2,7 @@
 
 ## 환경
 
-macOS/Linux, Python 3.9 이상, 표준 라이브러리만. 스크립트는 네트워크를 쓰지 않는다. `git`이 PATH에 있어야 `init`이 저장소를 만든다. PDF/HWP 파서는 포함하지 않으니 세션이 제공하는 도구를 쓰고 못 읽은 부분은 밝힌다.
+macOS/Linux, Python 3.9 이상, 표준 라이브러리만. 스크립트는 네트워크를 쓰지 않는다. `git`이 PATH에 있어야 `init`이 저장소를 만든다. PDF/HWP 파서는 포함하지 않는다. 읽기는 세션의 도구(`pdftotext`/`pdftoppm`, `rhwp`, `tesseract`)로 하며 절차는 analysis-rubric.md에 있다. 못 읽은 부분은 밝힌다.
 
 스킬은 Claude Code 플러그인으로 설치되어 플러그인 캐시에서 로드된다. 워크스페이스에는 스킬 사본이 없다. 아래 `$C`는 이 `SKILL.md`와 같은 디렉터리의 `scripts/compass.py`다.
 
