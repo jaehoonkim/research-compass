@@ -1,7 +1,7 @@
 {
   "name": "research-compass",
   "description": "Stage-by-stage research coach for beginners: from job postings, RFPs, and papers to a planned, executed, and written-up research project.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "jaehoonkim"
   },
