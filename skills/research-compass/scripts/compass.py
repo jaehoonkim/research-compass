@@ -243,16 +243,109 @@ def check_store(root: Path, store: str, errors: list, warnings: list) -> list[di
     return rows
 
 
+def new_project(root: Path, slug: str, title: str) -> dict:
+    if not re.fullmatch(r'[a-z0-9-]+', slug):
+        raise ValueError('Slug must match [a-z0-9-]+')
+    if not title.strip():
+        raise ValueError('Title must not be empty')
+    projects = safe(root, 'projects')
+    projects.mkdir(parents=True, exist_ok=True)
+    numbers = [int(m.group(1).split('-')[1]) for d in projects.iterdir()
+               if (m := PROJECT_DIR_RE.match(d.name))]
+    pid = 'P-' + str(max(numbers, default=0) + 1).zfill(3)
+    folder = safe(root, 'projects/' + pid + '-' + slug)
+    (folder / 'experiments').mkdir(parents=True)
+    (folder / 'experiments/.gitkeep').touch()
+    today = now(root).date().isoformat()
+    (folder / 'project.md').write_text(render('project.md', ID=pid, TITLE=title, DATE=today), encoding='utf-8')
+    (folder / 'reading.md').write_text(render('reading.md', ID=pid, TITLE=title), encoding='utf-8')
+    return {'status': 'created', 'id': pid, 'path': str(folder.relative_to(root)), 'stage': 'direction'}
+
+
+def stage_index(name: str) -> int:
+    return STAGES.index(name) if name in STAGES else -1
+
+
+def check_projects(root: Path, errors: list, warnings: list, min_library: int) -> tuple[list[dict], set]:
+    projects, ids = [], set()
+    for folder in sorted(safe(root, 'projects').glob('P-*')):
+        m = PROJECT_DIR_RE.match(folder.name)
+        if not m or not folder.is_dir():
+            errors.append(folder.name + ': project folder must be P-NNN-slug')
+            continue
+        pid, slug = m.group(1), m.group(2)
+        card = folder / 'project.md'
+        if not card.is_file():
+            errors.append(pid + ': project.md missing')
+            continue
+        h = header(card)
+        ids.add(pid)
+        if h.get('id') != pid:
+            errors.append(pid + ': header id does not match folder')
+        stage = h.get('stage', '')
+        if stage not in STAGES:
+            errors.append(pid + ': invalid stage ' + repr(stage))
+        if h.get('status', 'active') not in PROJECT_STATUS:
+            errors.append(pid + ': invalid status ' + repr(h.get('status')))
+        skips = []
+        for line in h['skip']:
+            sm = SKIP_RE.match(line)
+            if not sm or sm.group(1) not in STAGES or sm.group(2) not in STAGES:
+                errors.append(pid + ': bad skip line ' + repr(line))
+            else:
+                skips.append((stage_index(sm.group(1)), stage_index(sm.group(2))))
+        exps = []
+        for exp in sorted((folder / 'experiments').glob('EXP-*.md')):
+            eh = header(exp)
+            ids.add(exp.stem)
+            if eh.get('id') != exp.stem:
+                errors.append(exp.stem + ': header id does not match filename')
+            kind, status = eh.get('kind', ''), eh.get('status', '')
+            if kind not in EXP_KINDS:
+                errors.append(exp.stem + ': invalid kind ' + repr(kind))
+            if status not in EXP_STATUS:
+                errors.append(exp.stem + ': invalid status ' + repr(status))
+            if kind in GATE and stage in STAGES:
+                need = stage_index(GATE[kind])
+                have = stage_index(stage)
+                if have < need:
+                    msg = f'{exp.stem}: gate violation, kind {kind} needs stage {GATE[kind]} but {pid} is at {stage}'
+                    if any(a <= have and b >= need for a, b in skips):
+                        warnings.append(msg + ' (skipped)')
+                    else:
+                        errors.append(msg)
+            exps.append({'kind': kind, 'status': status, 'verdict': eh.get('verdict', '')})
+        unmet = []
+        if stage == 'reading':
+            reading = folder / 'reading.md'
+            libs = set(re.findall(r'\bLIB-\d{8}-\d{3,}\b', reading.read_text(encoding='utf-8'))) if reading.is_file() else set()
+            if len(libs) < min_library:
+                unmet.append(f'reading.md links {len(libs)} library records; minimum {min_library}')
+        elif stage == 'reproduction':
+            if not any(e['kind'] == 'reproduction' and e['status'] in ('completed', 'blocked') for e in exps):
+                unmet.append('no reproduction experiment with status completed or blocked')
+        elif stage == 'pilot':
+            if not any(e['kind'] == 'pilot' and e['status'] == 'completed' and e['verdict'] in ('alive', 'dead') for e in exps):
+                unmet.append('no completed pilot experiment with verdict alive or dead')
+        elif stage in ('question', 'plan'):
+            if h.get('approval', '미확인') in ('', '미확인', 'pending', 'no'):
+                unmet.append(f'approval line is not set for stage {stage}')
+        projects.append({'id': pid, 'slug': slug, 'title': h.get('title', ''), 'stage': stage,
+                         'status': h.get('status', 'active'), 'unmet': unmet})
+    return projects, ids
+
+
 def check(root: Path) -> dict:
     errors, warnings = [], []
-    config(root)
+    cfg = config(root)
     for name in ['CLAUDE.md', 'profile.md', 'roadmap.md']:
         if not safe(root, name).is_file():
             errors.append('Missing required file: ' + name)
     signals = check_store(root, 'signals', errors, warnings)
     library = check_store(root, 'library', errors, warnings)
+    projects, project_ids = check_projects(root, errors, warnings, int(cfg.get('min_library', 5)))
     groups = {r.get('demand_group') for r in signals} - {None}
-    available = {r['id'] for r in signals + library}
+    available = {r['id'] for r in signals + library} | project_ids
     for path in root.rglob('*.md'):
         if path.name.startswith('original.') or '.git' in path.parts:
             continue
@@ -261,8 +354,9 @@ def check(root: Path) -> dict:
                 errors.append(str(path.relative_to(root)) + ': unresolved ID ' + ref)
     return {'status': 'ok' if not errors else 'failed', 'errors': errors, 'warnings': warnings,
             'counts': {'signals': len(signals), 'library': len(library), 'demand_groups': len(groups)},
+            'projects': projects,
             'limits': 'Structure, hashes, references, and stage gates only; not prose truth, novelty, '
-                      'privacy, extraction completeness, or agent behavior.'}
+                      'privacy, extraction completeness, or agent behavior. EXP ids are per project.'}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -284,6 +378,9 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument('--visibility', choices=['public', 'private', 'unknown'], default='private')
     add.add_argument('--related-to')
     add.add_argument('--relation', choices=['revision', 'repost', 'related'])
+    np = sub.add_parser('new-project', parents=[common])
+    np.add_argument('--slug', required=True, help='[a-z0-9-]+, used in the folder name')
+    np.add_argument('--title', required=True)
     return p
 
 
@@ -295,7 +392,8 @@ def main() -> int:
             result = initialize(root)
         else:
             config(root)
-            result = {'check': check, 'ingest': lambda r: ingest(r, args)}[args.command](root)
+            result = {'check': check, 'ingest': lambda r: ingest(r, args),
+                      'new-project': lambda r: new_project(r, args.slug, args.title)}[args.command](root)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if result.get('status') == 'failed' else 0
     except (OSError, ValueError, KeyError, TypeError) as exc:

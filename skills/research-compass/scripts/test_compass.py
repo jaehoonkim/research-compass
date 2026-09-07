@@ -121,6 +121,103 @@ class CompassTests(unittest.TestCase):
         meta.write_text(json.dumps(record))
         self.assertTrue(any('plain filename' in e for e in self.call('check', expected=1)['errors']))
 
+    # projects
+    def project(self, slug='rvv-quant'):
+        return self.call('new-project', '--slug', slug, '--title', 'Test project')
+
+    def set_header(self, path, **fields):
+        lines = path.read_text(encoding='utf-8').splitlines()
+        end = lines.index('')
+        head = [l for l in lines[:end] if l.split(':')[0] not in fields]
+        head += [f'{k}: {v}' for k, v in fields.items()]
+        path.write_text('\n'.join(head + lines[end:]) + '\n', encoding='utf-8')
+
+    def experiment(self, folder, kind, number=1, **fields):
+        p = folder / 'experiments' / f'EXP-{number:03d}.md'
+        p.write_text(f'id: EXP-{number:03d}\nkind: {kind}\nstatus: planned\nverdict:\n\n# EXP\n', encoding='utf-8')
+        if fields:
+            self.set_header(p, **fields)
+        return p
+
+    def test_new_project_numbers_and_files(self):
+        a = self.project('first')
+        b = self.project('second')
+        self.assertEqual(a['id'], 'P-001')
+        self.assertEqual(b['id'], 'P-002')
+        folder = self.root / 'projects/P-002-second'
+        self.assertTrue((folder / 'project.md').exists())
+        self.assertTrue((folder / 'reading.md').exists())
+        self.assertTrue((folder / 'experiments').is_dir())
+        self.assertEqual(self.call('check')['projects'][1]['stage'], 'direction')
+
+    def test_new_project_rejects_bad_slug(self):
+        self.call('new-project', '--slug', 'Bad Slug', '--title', 'x', expected=2)
+
+    def test_invalid_stage_is_error(self):
+        self.project()
+        self.set_header(self.root / 'projects/P-001-rvv-quant/project.md', stage='thinking')
+        self.assertTrue(any('invalid stage' in e for e in self.call('check', expected=1)['errors']))
+
+    def test_gate_blocks_main_experiment_before_plan(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading')
+        self.experiment(folder, 'main')
+        errors = self.call('check', expected=1)['errors']
+        self.assertTrue(any('gate' in e for e in errors), errors)
+
+    def test_gate_allows_reproduction_at_reading(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading')
+        self.experiment(folder, 'reproduction')
+        self.assertEqual(self.call('check')['status'], 'ok')
+
+    def test_skip_downgrades_gate_to_warning(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading', skip='reading->plan 2026-09-10 사용자 요청')
+        self.experiment(folder, 'main')
+        result = self.call('check')
+        self.assertEqual(result['status'], 'ok')
+        self.assertTrue(any('gate' in w for w in result['warnings']))
+
+    def test_bad_skip_line_is_error(self):
+        self.project()
+        self.set_header(self.root / 'projects/P-001-rvv-quant/project.md', skip='reading plan whenever')
+        self.assertTrue(any('skip' in e for e in self.call('check', expected=1)['errors']))
+
+    def test_invalid_experiment_kind_and_status(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.experiment(folder, 'guess', status='done')
+        errors = self.call('check', expected=1)['errors']
+        self.assertTrue(any('invalid kind' in e for e in errors))
+        self.assertTrue(any('invalid status' in e for e in errors))
+
+    def test_reading_stage_reports_unmet_library_minimum(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='reading')
+        lib = self.add('paper', 'library')['id']
+        (folder / 'reading.md').write_text(f'# notes\n{lib}\n', encoding='utf-8')
+        unmet = self.call('check')['projects'][0]['unmet']
+        self.assertTrue(any('library' in u for u in unmet), unmet)
+
+    def test_pilot_stage_reports_missing_verdict(self):
+        self.project()
+        folder = self.root / 'projects/P-001-rvv-quant'
+        self.set_header(folder / 'project.md', stage='pilot')
+        self.experiment(folder, 'pilot', status='completed')
+        self.assertTrue(any('verdict' in u for u in self.call('check')['projects'][0]['unmet']))
+        self.experiment(folder, 'pilot', status='completed', verdict='alive')
+        self.assertEqual(self.call('check')['projects'][0]['unmet'], [])
+
+    def test_unknown_id_reference_in_project_fails(self):
+        self.project()
+        (self.root / 'projects/P-001-rvv-quant/reading.md').write_text('See LIB-20200101-999', encoding='utf-8')
+        self.assertTrue(any('unresolved ID' in e for e in self.call('check', expected=1)['errors']))
+
 
 if __name__ == '__main__':
     unittest.main()
