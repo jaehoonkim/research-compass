@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.venv/
+.compass-write.lock
+snapshots/
+artifacts/
+models/
+datasets/
+inbox/*
+!inbox/.gitkeep
+sources/**/original.*
+sources/**/extracted.*
+sources/.pending-*/

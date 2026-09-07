@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "workspace_name": "Research Compass",
+  "language": "ko",
+  "timezone": "Asia/Seoul",
+  "proposed_main_tracks": 1,
+  "proposed_supporting_tracks": 1,
+  "auto_commit": false,
+  "auto_push": false,
+  "automatic_collection": false
+}

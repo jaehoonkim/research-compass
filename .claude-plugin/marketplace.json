@@ -1,0 +1,17 @@
+{
+  "name": "research-compass",
+  "owner": {
+    "name": "jaehoonkim"
+  },
+  "plugins": [
+    {
+      "name": "research-compass",
+      "source": "./",
+      "description": "Turn job postings and RFPs into a durable, evidence-linked local research roadmap.",
+      "version": "0.2.0"
+    }
+  ],
+  "metadata": {
+    "description": "Research Compass plugin: job postings / RFPs -> local research roadmap"
+  }
+}
