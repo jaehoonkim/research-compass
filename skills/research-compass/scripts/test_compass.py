@@ -33,7 +33,7 @@ class CompassTests(unittest.TestCase):
 
     def test_initialization_and_health(self):
         self.assertEqual(self.call('check')['status'], 'ok')
-        self.assertTrue((self.root / 'skills/research-compass/SKILL.md').exists())
+        self.assertTrue((self.root / 'CLAUDE.md').exists())
 
     def test_init_is_idempotent_and_preserves_edits(self):
         p = self.root / 'profile/researcher.md'
@@ -48,20 +48,6 @@ class CompassTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(SCRIPT), 'init', '--root', str(root)], capture_output=True)
         self.assertEqual(result.returncode, 2)
         self.assertEqual((root / 'valuable.txt').read_text(), 'keep')
-
-    def test_install_shared_links_idempotently(self):
-        self.assertEqual(len(self.call('install')['links_created']), 2)
-        self.assertEqual(self.call('install')['links_created'], [])
-        for host in ['.claude', '.agents']:
-            link = self.root / host / 'skills/research-compass'
-            self.assertTrue(link.is_symlink())
-            self.assertEqual(link.resolve(), (self.root / "skills/research-compass").resolve())
-
-    def test_install_refuses_conflicts(self):
-        p = self.root / '.claude/skills/research-compass'
-        p.mkdir(parents=True)
-        self.assertEqual(self.call('install', expected=2)['status'], 'error')
-        self.assertFalse((self.root / '.agents/skills/research-compass').exists())
 
     def test_ingest_preserves_bytes_and_unknowns(self):
         item = self.add()

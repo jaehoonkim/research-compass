@@ -2,7 +2,7 @@
 
 채용공고·과제 RFP·논문·실험 결과를 근거로 연구 로드맵을 로컬 파일에 누적 관리하는 Claude Code 플러그인이다. 새 공고가 들어와도 주 연구를 자동으로 바꾸지 않고, 기존 방향을 강화하는지·수정이 필요한지·관찰만 할지를 판단해 근거와 함께 기록한다.
 
-스킬 본체는 `skills/research-compass/`에 있다. Codex의 `.agents/skills/`에도 그대로 쓸 수 있다.
+스킬 본체는 `skills/research-compass/`에 있다.
 
 ## 설치
 
@@ -18,14 +18,15 @@ claude plugin install research-compass@research-compass
 연구 기록은 플러그인이 아니라 별도 폴더에 쌓인다. 빈 폴더를 하나 만든다.
 
 ```bash
-python3 ~/.claude/plugins/cache/research-compass/research-compass/*/skills/research-compass/scripts/compass.py init --root ./my-research
-cd my-research && python3 setup.py
+C=$(ls -d ~/.claude/plugins/cache/research-compass/research-compass/*/skills/research-compass)/scripts/compass.py
+python3 $C init --root ./my-research
 ```
 
-`init`은 폴더 구조와 스킬 사본을 만들고, `setup.py`는 `.claude/skills/`에 심링크를 건다. 그다음 `my-research`를 Claude Code로 연다.
+`init`은 폴더 구조와 양식만 만든다. 스킬은 플러그인에서 로드되므로 워크스페이스에 복사되지 않는다. 그다음 `my-research`를 Claude Code로 연다.
 
 ```text
 my-research/
+├── CLAUDE.md               # 이 폴더의 규칙
 ├── profile/researcher.md   # 연구 목표·역량·시간·장비 (확인된 것만)
 ├── inbox/                  # 새 공고·RFP를 여기 넣는다
 ├── sources/                # 원문·메타데이터·개별 분석
@@ -44,11 +45,7 @@ my-research/
 /research-compass inbox/실험결과.md를 관찰과 해석으로 나눠 기록하고 로드맵에 반영해줘.
 ```
 
-원문 등록·중복 검사·구조 검증은 `compass.py`가 하고, 내용 해석과 실험 설계는 Claude가 한다. 상태 점검은 워크스페이스에서 다음 명령으로 한다.
-
-```bash
-python3 skills/research-compass/scripts/compass.py check --root .
-```
+원문 등록·중복 검사·구조 검증은 `compass.py`가 하고, 내용 해석과 실험 설계는 Claude가 한다. 상태 점검은 워크스페이스에서 `python3 $C check --root .`로 한다.
 
 ## 스킬 수정 후 반영
 

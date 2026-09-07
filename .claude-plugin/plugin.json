@@ -1,7 +1,15 @@
 {
   "name": "research-compass",
-  "description": "Turn job postings and RFPs into a durable, evidence-linked local research roadmap (Claude Code + Codex shared skill).",
-  "version": "0.2.0",
-  "author": { "name": "jaehoonkim" },
-  "keywords": ["research", "rfp", "job-posting", "roadmap", "experiments"]
+  "description": "Turn job postings and RFPs into a durable, evidence-linked local research roadmap.",
+  "version": "0.3.0",
+  "author": {
+    "name": "jaehoonkim"
+  },
+  "keywords": [
+    "research",
+    "rfp",
+    "job-posting",
+    "roadmap",
+    "experiments"
+  ]
 }

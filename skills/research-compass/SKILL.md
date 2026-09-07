@@ -1,6 +1,6 @@
 ---
 name: research-compass
-description: Use when the user wants to turn job postings, project RFPs, papers, or experiment results into a local research roadmap in Claude Code or Codex — adding a posting, analyzing an RFP, organizing research directions, recommending the next experiment, or updating a roadmap. Korean triggers: 공고 추가, RFP 분석, 연구 방향 정리, 다음 실험 추천, 로드맵 갱신, 실험 결과 기록. Not for plain job searching, resume editing, or one-off document summaries unrelated to research planning.
+description: Use when the user wants to turn job postings, project RFPs, papers, or experiment results into a local research roadmap in Claude Code — adding a posting, analyzing an RFP, organizing research directions, recommending the next experiment, or updating a roadmap. Korean triggers: 공고 추가, RFP 분석, 연구 방향 정리, 다음 실험 추천, 로드맵 갱신, 실험 결과 기록. Not for plain job searching, resume editing, or one-off document summaries unrelated to research planning.
 ---
 
 # Research Compass — 연구 방향 나침반
@@ -10,8 +10,8 @@ description: Use when the user wants to turn job postings, project RFPs, papers,
 ## 시작 전에 읽을 것
 
 1. 작업 디렉터리에서 위로 올라가며 `compass.json`을 찾는다. 저장소 경계를 넘지 않는다. 사용자가 경로를 지정했으면 그것을 우선한다. 없으면 사용자가 명시한 새 디렉터리에만 `scripts/compass.py init --root PATH`로 만든다.
-2. 스크립트 경로는 이 `SKILL.md`가 있는 디렉터리 기준으로 푼다. `/research-compass`(Claude Code)와 `$research-compass`(Codex)는 같은 스킬이다.
-3. `AGENTS.md`, `compass.json`, `profile/researcher.md`, `index/sources.json`, `index/research-map.md`, `roadmap/current.md`를 읽는다. 원문 분석과 연구 카드는 관련된 것만 읽는다.
+2. 스크립트 경로는 이 `SKILL.md`가 있는 디렉터리 기준으로 푼다. 플러그인으로 설치되므로 보통 플러그인 캐시 안이다.
+3. `CLAUDE.md`, `compass.json`, `profile/researcher.md`, `index/sources.json`, `index/research-map.md`, `roadmap/current.md`를 읽는다. 원문 분석과 연구 카드는 관련된 것만 읽는다.
 4. 필요할 때 참고: 파일 쓰기·락·검증은 [operations.md](references/operations.md), 기록 형식은 [data-model.md](references/data-model.md), 해석·우선순위·실험 설계 기준은 [analysis-rubric.md](references/analysis-rubric.md), 스킬 자체를 고칠 때는 [evaluation-cases.md](references/evaluation-cases.md).
 
 ## 요청 분기

@@ -161,30 +161,8 @@ def initialize(root: Path) -> dict:
         raise ValueError('Workspace must be outside the distributable skill directory')
     root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(SKILL / 'assets/workspace', root, dirs_exist_ok=True)
-    shutil.copytree(SKILL, root / 'skills/research-compass',
-                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     reindex(root)
     return {'status': 'initialized', 'root': str(root)}
-
-
-def install(root: Path) -> dict:
-    local = root / 'skills/research-compass'
-    canonical = local.resolve() if (local / 'SKILL.md').is_file() else SKILL
-    targets = [root / '.agents/skills/research-compass',
-               root / '.claude/skills/research-compass']
-    for target in targets:
-        safe(root, str(target.parent.relative_to(root)))
-        if target.is_symlink() or target.exists():
-            if not target.is_symlink() or target.resolve() != canonical:
-                raise ValueError('Refusing to replace an existing installation: ' + str(target))
-    created = []
-    for target in targets:
-        if target.is_symlink():
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.symlink_to(os.path.relpath(canonical, target.parent), target_is_directory=True)
-        created.append(str(target.relative_to(root)))
-    return {'status': 'installed', 'canonical_skill': str(canonical), 'links_created': created}
 
 
 def ingest(root: Path, a: argparse.Namespace) -> dict:
@@ -271,7 +249,7 @@ def snapshot(root: Path) -> dict:
 def check(root: Path) -> dict:
     errors, warnings = [], []
     config(root)
-    for name in ['AGENTS.md', 'CLAUDE.md', 'profile/researcher.md', 'index/research-map.md', 'roadmap/current.md']:
+    for name in ['CLAUDE.md', 'profile/researcher.md', 'index/research-map.md', 'roadmap/current.md']:
         if not safe(root, name).is_file():
             errors.append('Missing required file: ' + name)
     rows = records(root)
@@ -360,7 +338,7 @@ def parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--root', required=True, help='Explicit workspace directory')
     common.add_argument('--lock-token', help='Token from lock-acquire for multi-file work')
-    for name in ['init', 'install', 'reindex', 'check', 'snapshot', 'lock-status', 'lock-release']:
+    for name in ['init', 'reindex', 'check', 'snapshot', 'lock-status', 'lock-release']:
         sub.add_parser(name, parents=[common])
     lock = sub.add_parser('lock-acquire', parents=[common])
     lock.add_argument('--owner', required=True, help='Descriptive session name')
@@ -399,9 +377,7 @@ def main() -> int:
                 result = {'status': 'unlocked'}
             else:
                 with write_lock(root, args.lock_token):
-                    if args.command == 'install':
-                        result = install(root)
-                    elif args.command == 'ingest':
+                    if args.command == 'ingest':
                         result = ingest(root, args)
                     elif args.command == 'snapshot':
                         result = snapshot(root)

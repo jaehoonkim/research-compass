@@ -8,7 +8,7 @@
 
 ```
 compass.json
-AGENTS.md / CLAUDE.md
+CLAUDE.md
 profile/researcher.md
 inbox/
 sources/SRC-YYYYMMDD-NNN/
@@ -23,7 +23,6 @@ experiments/EXP-NNN.md
 roadmap/current.md
 decisions/YYYYMMDD-HHMMSS-설명.md
 snapshots/            # Git 제외
-skills/research-compass/
 ```
 
 ## source.json (schema_version 1)
